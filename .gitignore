@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+
+# Conda / venv
+.conda/
+venv/
+env/
+
+# EasyOCR 모델 캐시 (사용자 홈 디렉토리에 저장되므로 보통 필요 없지만, 혹시 로컬에 복사될 경우 대비)
+*.pth
+*.pt
+
+# 생성된 이미지/데이터/결과물
+pytorch_port/outputs/
+pytorch_port/data/
+*.pkl
+
+# API 키 등 민감 정보 (.env.example은 placeholder만 있는 템플릿이라 git에 포함됨)
+.env
+pytorch_port/.env
+
+# OS
+.DS_Store
+Thumbs.db
