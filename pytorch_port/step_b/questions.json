@@ -1,0 +1,142 @@
+[
+  {
+    "id": 1,
+    "subject": "한국사",
+    "question": "조선을 건국한 왕은 누구인가?",
+    "choices": ["이성계", "왕건", "이방원", "세종대왕"],
+    "answer_index": 0
+  },
+  {
+    "id": 2,
+    "subject": "한국사",
+    "question": "훈민정음을 창제한 왕은 누구인가?",
+    "choices": ["태종", "세종대왕", "정조", "영조"],
+    "answer_index": 1
+  },
+  {
+    "id": 3,
+    "subject": "한국사",
+    "question": "임진왜란 당시 거북선을 활용한 장군은 누구인가?",
+    "choices": ["이순신", "권율", "김유신", "을지문덕"],
+    "answer_index": 0
+  },
+  {
+    "id": 4,
+    "subject": "한국사",
+    "question": "고구려, 백제, 신라 중 한반도를 최초로 통일한 나라는?",
+    "choices": ["고구려", "백제", "신라", "가야"],
+    "answer_index": 2
+  },
+  {
+    "id": 5,
+    "subject": "한국사",
+    "question": "대한민국 임시정부가 수립된 도시는 어디인가?",
+    "choices": ["도쿄", "상하이", "베이징", "하와이"],
+    "answer_index": 1
+  },
+  {
+    "id": 6,
+    "subject": "과학",
+    "question": "물의 화학식은 무엇인가?",
+    "choices": ["CO2", "H2O", "O2", "NaCl"],
+    "answer_index": 1
+  },
+  {
+    "id": 7,
+    "subject": "과학",
+    "question": "지구에서 가장 가까운 행성은 무엇인가?",
+    "choices": ["금성", "화성", "목성", "토성"],
+    "answer_index": 0
+  },
+  {
+    "id": 8,
+    "subject": "과학",
+    "question": "사람의 몸에서 피를 온몸으로 보내는 기관은 무엇인가?",
+    "choices": ["폐", "심장", "간", "위"],
+    "answer_index": 1
+  },
+  {
+    "id": 9,
+    "subject": "과학",
+    "question": "빛의 삼원색이 아닌 것은?",
+    "choices": ["빨강", "초록", "파랑", "노랑"],
+    "answer_index": 3
+  },
+  {
+    "id": 10,
+    "subject": "과학",
+    "question": "식물이 빛을 이용해 양분을 만드는 과정을 무엇이라 하는가?",
+    "choices": ["호흡", "광합성", "증발", "발효"],
+    "answer_index": 1
+  },
+  {
+    "id": 11,
+    "subject": "사회",
+    "question": "대한민국의 수도는 어디인가?",
+    "choices": ["부산", "인천", "서울", "대구"],
+    "answer_index": 2
+  },
+  {
+    "id": 12,
+    "subject": "사회",
+    "question": "국회의원의 임기는 몇 년인가?",
+    "choices": ["2년", "4년", "5년", "6년"],
+    "answer_index": 1
+  },
+  {
+    "id": 13,
+    "subject": "사회",
+    "question": "대한민국 화폐 단위는 무엇인가?",
+    "choices": ["엔", "달러", "원", "위안"],
+    "answer_index": 2
+  },
+  {
+    "id": 14,
+    "subject": "사회",
+    "question": "UN(국제연합) 본부가 있는 도시는 어디인가?",
+    "choices": ["런던", "파리", "뉴욕", "제네바"],
+    "answer_index": 2
+  },
+  {
+    "id": 15,
+    "subject": "사회",
+    "question": "대한민국의 행정구역 중 특별시는 어디인가?",
+    "choices": ["부산", "서울", "인천", "대전"],
+    "answer_index": 1
+  },
+  {
+    "id": 16,
+    "subject": "상식",
+    "question": "하루는 몇 시간인가?",
+    "choices": ["12시간", "24시간", "48시간", "7시간"],
+    "answer_index": 1
+  },
+  {
+    "id": 17,
+    "subject": "상식",
+    "question": "일 년은 몇 개월인가?",
+    "choices": ["10개월", "11개월", "12개월", "13개월"],
+    "answer_index": 2
+  },
+  {
+    "id": 18,
+    "subject": "상식",
+    "question": "한글날은 몇 월 며칠인가?",
+    "choices": ["5월 5일", "10월 9일", "3월 1일", "8월 15일"],
+    "answer_index": 1
+  },
+  {
+    "id": 19,
+    "subject": "상식",
+    "question": "사계절 중 가장 더운 계절은?",
+    "choices": ["봄", "여름", "가을", "겨울"],
+    "answer_index": 1
+  },
+  {
+    "id": 20,
+    "subject": "상식",
+    "question": "무지개는 몇 가지 색으로 이루어져 있는가?",
+    "choices": ["5가지", "6가지", "7가지", "8가지"],
+    "answer_index": 2
+  }
+]
