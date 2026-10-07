@@ -130,6 +130,7 @@ def attack_untargeted(
     original_tensor,
     wm_mask_tensor,
     original_text,
+    ground_truth_text=None,
     eps=0.45,
     eps_iter=0.045,
     max_iter=200,
@@ -153,32 +154,67 @@ def attack_untargeted(
     - sign(grad)의 + 방향으로 이동하면 손실이 커지므로(ascent), targeted와
       달리 step에 음수를 붙이지 않는다.
 
+    성공 판정 기준의 변천 (중요, WORK_LOG_StepC.md 참고):
+    1차: "원본 글자(original_text)와 다르게 읽히면 성공". 짧은 단어(Step A)에서는
+      통했지만, 문장/선택지(Step C)에서는 공격 전부터 이미 틀리게 읽는 경우가
+      많아 의미가 없었다.
+    2차: "공격 전(0번째 반복) OCR 예측과 다르면 성공"으로 수정. 그런데 실제로
+      성공으로 집계된 사례를 들여다보니, 세 가지 전혀 다른 경우가 섞여 있었다:
+      (a) 진짜로 더 틀려진 경우(예: "C) 이방원"->"C 이방원", 닫는 괄호 소실),
+      (b) 오히려 더 정확해진 경우(예: "C) 베이장"->"C) 베이징", 우연히 오타가
+      고쳐짐), (c) 의미 없는 변화(예: "B) 왕건"->"B) 왕건 ", 끝에 공백만 추가).
+      (b), (c)는 공격 효과라고 볼 수 없는데 전부 "성공 1건"으로 잘못 집계됐다.
+    3차(현재): "정답(ground_truth_text)과의 CER(문자 오류율)이 공격 전보다
+      공격 후에 실제로 늘어났는가"로 최종 변경. 이러면 (a)만 성공으로 잡히고
+      (b), (c)는 자동으로 걸러진다. 또한 반복 중 CER이 가장 높아진(가장 많이
+      틀어진) 시점을 "최선의 공격 결과"로 추적한다 (중간에 우연히 한 번
+      나빠졌다가 다시 좋아지는 경우를 대비해, 매 iteration의 최댓값을 계속
+      추적하는 방식).
+
     Args:
         ocr_wrapper, original_tensor, wm_mask_tensor: attack_watermark_region과 동일.
-        original_text: 이 이미지의 실제(정답) 텍스트. 공격 목표가 아니라
-            "이걸로 읽히면 공격 실패"라는 기준점으로 쓰인다.
+        original_text: CTC loss 계산의 기준 텍스트 (정답으로부터 멀어지는 방향으로
+            공격). 보통 공격 전 OCR 예측 결과를 그대로 넘기면 된다.
+        ground_truth_text: 이 이미지의 실제 정답 텍스트. CER 계산 기준으로 쓰인다.
+            None이면 original_text를 정답으로 간주한다 (Step A처럼 공격 전
+            OCR이 항상 정답을 맞히는 짧은 단어에 해당).
         eps, eps_iter, max_iter, verbose: attack_watermark_region과 동일.
             eps 기본값(0.45)은 5개 한글 단어로 0.3~0.6 구간을 비교해서 정한 값으로,
-            "공격 성공률 100%를 유지하는 가장 작은 값"이다. eps가 작을수록 워터마크
-            변화가 연해져 사람 눈에 덜 거슬리지만, 너무 작으면(0.3~0.4) 일부 단어에서
-            공격이 실패했다 (WORK_LOG.md 6단계 참고). 단어 길이/폰트/문장 단위로
-            확장하면 이 값은 재조정이 필요할 수 있는 잠정값이다.
+            "공격 성공률 100%를 유지하는 가장 작은 값"이다.
 
     Returns:
         dict with keys:
-            "adv_tensor": 최종 적대적 이미지 텐서
-            "success": bool, 최종 예측이 original_text와 달라졌는지 여부
-            "success_iter": 성공한 iteration 번호 (실패 시 None)
-            "final_prediction": 마지막 iteration에서의 OCR 예측 문자열
-            "history": 각 iteration의 (prediction, ctc_loss) 리스트
+            "adv_tensor": CER이 가장 높았던(가장 많이 틀어진) 시점의 이미지 텐서
+                (실패 시에는 마지막 iteration의 텐서)
+            "success": bool, 최선의 CER이 베이스라인 CER보다 실제로 높아졌는지 여부
+            "success_iter": 그 최선의 CER이 나온 iteration 번호 (실패 시 None)
+            "baseline_prediction": 공격을 시작하기 전(0번째 반복) OCR 예측 결과
+            "baseline_cer": 공격 전 CER (ground_truth_text 대비)
+            "final_prediction": 최선의 공격 결과에서의 OCR 예측 문자열
+            "final_cer": 최선의 공격 결과에서의 CER
+            "history": 각 iteration의 (prediction, ctc_loss, cer) 리스트
     """
+    from text_metrics import compute_cer  # 순환 임포트 방지를 위해 함수 내부에서 임포트
+
     clip_min, clip_max = -1.0, 1.0
+
+    if ground_truth_text is None:
+        ground_truth_text = original_text
 
     adv_tensor = original_tensor.clone().detach()
     momentum = torch.zeros_like(adv_tensor)
 
-    success = False
-    success_iter = None
+    # 공격을 시작하기 전, 원본(워터마크 합성까지만 된 상태) 이미지를 OCR이
+    # 어떻게 읽는지 베이스라인으로 기록한다.
+    baseline_prediction = ocr_wrapper.predict_text(adv_tensor)
+    baseline_cer = compute_cer(baseline_prediction.strip(), ground_truth_text.strip())
+
+    # "지금까지 CER이 가장 높았던(가장 많이 틀어진) 시점"을 추적한다.
+    best_cer = baseline_cer
+    best_prediction = baseline_prediction
+    best_tensor = adv_tensor.clone().detach()
+    best_iter = None
+
     history = []
 
     for it in range(max_iter):
@@ -207,23 +243,39 @@ def attack_untargeted(
             adv_tensor = torch.clamp(adv_tensor, clip_min, clip_max)
 
         prediction = ocr_wrapper.predict_text(adv_tensor)
-        history.append((prediction, loss.item()))
+        cer = compute_cer(prediction.strip(), ground_truth_text.strip())
+        history.append((prediction, loss.item(), cer))
+
+        if cer > best_cer:
+            best_cer = cer
+            best_prediction = prediction
+            best_tensor = adv_tensor.clone().detach()
+            best_iter = it
 
         if verbose and (it % 20 == 0 or it == max_iter - 1):
-            print(f"  [iter {it:3d}] CTC loss(정답 기준)={loss.item():.4f}, 현재 예측='{prediction}'")
+            print(
+                f"  [iter {it:3d}] CTC loss(정답 기준)={loss.item():.4f}, "
+                f"현재 예측='{prediction}', CER={cer:.3f} (베이스라인 CER={baseline_cer:.3f})"
+            )
 
-        if prediction != original_text and not success:
-            success = True
-            success_iter = it
-            if verbose:
-                print(f"  -> 공격 성공! iteration {it}에서 더 이상 '{original_text}'로 읽히지 않음 (현재: '{prediction}')")
-            break
+    success = best_iter is not None  # best_cer > baseline_cer인 경우에만 best_iter가 채워짐
+    if verbose:
+        if success:
+            print(
+                f"  -> 공격 성공! iteration {best_iter}에서 CER이 {baseline_cer:.3f} -> "
+                f"{best_cer:.3f}로 증가 (예측: '{baseline_prediction}' -> '{best_prediction}')"
+            )
+        else:
+            print(f"  -> 공격 실패. CER이 베이스라인({baseline_cer:.3f}) 이상으로 오르지 않음.")
 
     return {
-        "adv_tensor": adv_tensor.detach(),
+        "adv_tensor": best_tensor,
         "success": success,
-        "success_iter": success_iter,
-        "final_prediction": history[-1][0] if history else None,
+        "success_iter": best_iter,
+        "baseline_prediction": baseline_prediction,
+        "baseline_cer": baseline_cer,
+        "final_prediction": best_prediction,
+        "final_cer": best_cer,
         "history": history,
     }
 

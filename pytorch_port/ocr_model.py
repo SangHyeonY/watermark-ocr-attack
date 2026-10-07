@@ -30,8 +30,19 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 
-# EasyOCR 인식 모델이 기대하는 입력 사양 (recognition.py AlignCollate 참고)
-IMG_HEIGHT = 32
+# EasyOCR 인식 모델이 기대하는 입력 사양.
+#
+# 중요: IMG_HEIGHT는 32가 아니라 64다 (WORK_LOG_StepC.md 참고).
+# 처음 ocr_model.py를 만들 때 easyocr/recognition.py의 AlignCollate.__init__
+# 함수 선언부에 있는 기본 매개변수값(imgH=32)을 보고 "모델 입력 높이는 32"라고
+# 잘못 판단했다. 하지만 실제로 reader.recognize()가 AlignCollate를 호출할 때는
+# easyocr/config.py에 정의된 imgH=64를 명시적으로 넘겨서 쓴다 (korean_g2 등
+# 공식 제공 모델 기준. 사용자 정의 모델만 .yaml에서 다른 값을 쓸 수 있음).
+# 즉 32는 "함수를 다른 용도로 쓸 때의 기본값"일 뿐, 실제 이 모델이 쓰는 값이
+# 아니었다. 이로 인해 Step A~C 전체가 실제보다 절반 해상도로 압축된 이미지를
+# 입력하고 있었고, 짧은 단어에서는 영향이 작았지만 문장/작은 기호(예: "A)")에서는
+# 인식 품질 저하가 뚜렷하게 나타났다.
+IMG_HEIGHT = 64
 IMG_WIDTH = 100
 # batch_max_length는 EasyOCR 내부에서 int(imgW/10)으로 계산되지만,
 # 실제 CTCLabelConverter.encode에는 영향 없음 (text_for_pred placeholder용).
@@ -60,20 +71,30 @@ class OcrAttackModel:
         self.model.eval()  # 추론 모드(dropout 등 비활성화)이지만 gradient 계산은 그대로 가능
         self.converter = reader.converter
 
-    def image_to_tensor(self, pil_image):
+    def image_to_tensor(self, pil_image, max_width=IMG_WIDTH):
         """PIL 이미지를 EasyOCR 인식 모델 입력 형식의 텐서로 변환한다.
 
         원본 FAWA의 scale() 함수(높이 32로 리사이즈 후 정규화)와 같은 역할.
         EasyOCR의 recognition.py NormalizePAD/AlignCollate 로직을 참고해 재현.
 
+        Args:
+            pil_image: 변환할 PIL 이미지.
+            max_width: 최종 텐서의 가로 폭(패딩 포함). 기본값은 EasyOCR 원본이
+                쓰는 100이지만, Step B/C처럼 "문제+선택지 한 줄"같이 긴 문장을
+                다룰 때는 100보다 훨씬 긴 값이 필요하다. 원래 고정값이었던
+                IMG_WIDTH를 그대로 쓰면 100픽셀을 넘는 글자가 그냥 잘려서
+                (clipping) 공격 대상 텍스트 자체가 손상되는 문제가 있었다
+                (WORK_LOG_StepC.md 참고). 이 파라미터로 줄마다 필요한 폭을
+                넘겨줄 수 있게 했다.
+
         Returns:
-            torch.Tensor, shape (1, 1, 32, 100), requires_grad=True로 설정됨.
+            torch.Tensor, shape (1, 1, 32, max_width), requires_grad=True로 설정됨.
             값 범위는 [-1, 1] (EasyOCR 내부 정규화 방식과 동일).
         """
         gray = pil_image.convert("L")
         w, h = gray.size
         ratio = w / float(h)
-        resized_w = min(IMG_WIDTH, math.ceil(IMG_HEIGHT * ratio))
+        resized_w = min(max_width, math.ceil(IMG_HEIGHT * ratio))
         resized = gray.resize((resized_w, IMG_HEIGHT), Image.BICUBIC)
 
         arr = np.array(resized).astype(np.float32) / 255.0  # [0, 1]
@@ -81,16 +102,16 @@ class OcrAttackModel:
         tensor = (tensor - 0.5) / 0.5  # [-1, 1] 정규화 (NormalizePAD와 동일)
 
         # 오른쪽 패딩 (EasyOCR의 PAD_type='right'와 동일: 마지막 열을 반복해서 채움)
-        padded = torch.zeros(1, 1, IMG_HEIGHT, IMG_WIDTH)
+        padded = torch.zeros(1, 1, IMG_HEIGHT, max_width)
         padded[:, :, :, :resized_w] = tensor
-        if resized_w < IMG_WIDTH:
-            last_col = tensor[:, :, :, -1:].expand(1, 1, IMG_HEIGHT, IMG_WIDTH - resized_w)
+        if resized_w < max_width:
+            last_col = tensor[:, :, :, -1:].expand(1, 1, IMG_HEIGHT, max_width - resized_w)
             padded[:, :, :, resized_w:] = last_col
 
         padded.requires_grad_(True)
         return padded
 
-    def mask_to_tensor(self, mask_array, orig_pil_size):
+    def mask_to_tensor(self, mask_array, orig_pil_size, max_width=IMG_WIDTH):
         """numpy 불리언 마스크(H, W)를 image_to_tensor()와 동일한 좌표계로 변환한다.
 
         watermark.py의 wm_mask/text_mask는 "합성 전 원본 글자 이미지" 크기의
@@ -105,13 +126,15 @@ class OcrAttackModel:
                 반환하는 wm_mask 또는 text_mask.
             orig_pil_size: (width, height) - 마스크가 기준으로 하는 원본 PIL 이미지 크기.
                 (watermark.py의 composite 이미지 크기와 동일해야 함)
+            max_width: image_to_tensor()에 넘긴 것과 반드시 같은 값을 넘겨야
+                픽셀 위치가 맞는다.
 
         Returns:
-            torch.Tensor, shape (1, 1, 32, 100), 값은 0.0 또는 1.0.
+            torch.Tensor, shape (1, 1, 32, max_width), 값은 0.0 또는 1.0.
         """
         w, h = orig_pil_size
         ratio = w / float(h)
-        resized_w = min(IMG_WIDTH, math.ceil(IMG_HEIGHT * ratio))
+        resized_w = min(max_width, math.ceil(IMG_HEIGHT * ratio))
 
         mask_img = Image.fromarray((np.asarray(mask_array).astype(np.uint8)) * 255)
         mask_resized = mask_img.resize((resized_w, IMG_HEIGHT), Image.NEAREST)
@@ -119,7 +142,7 @@ class OcrAttackModel:
 
         tensor = torch.from_numpy(mask_arr).unsqueeze(0).unsqueeze(0)  # (1,1,H,resized_w)
 
-        padded = torch.zeros(1, 1, IMG_HEIGHT, IMG_WIDTH)
+        padded = torch.zeros(1, 1, IMG_HEIGHT, max_width)
         padded[:, :, :, :resized_w] = tensor
         # 패딩 영역(resized_w 이후)은 0으로 유지 (워터마크도 글자도 없는 빈 공간)
         return padded
@@ -172,8 +195,8 @@ class OcrAttackModel:
 
 
 def tensor_to_pil_image(image_tensor):
-    """OCR 모델 입력용 텐서([-1,1] 범위, (1,1,32,100))를 사람이 눈으로 볼 수 있는
-    흑백 PIL 이미지로 되돌린다.
+    """OCR 모델 입력용 텐서([-1,1] 범위, (1,1,32,W) - W는 가변)를 사람이 눈으로
+    볼 수 있는 흑백 PIL 이미지로 되돌린다.
 
     image_to_tensor()에서 한 정규화(값을 0.5 빼고 0.5로 나눔)의 역변환
     (0.5를 곱하고 0.5를 더함)을 수행한다. 공격 전/후 이미지를 나란히 저장해서

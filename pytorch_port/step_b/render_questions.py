@@ -27,7 +27,11 @@ OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "outputs", "question_images
 FONT_SIZE = 32
 LINE_SPACING = 16
 MARGIN = 30
-CHOICE_LABELS = ["①", "②", "③", "④"]
+CHOICE_LABELS = ["A)", "B)", "C)", "D)"]
+# 변경 이력 (WORK_LOG_StepB.md / WORK_LOG_StepC.md 참고):
+# 1) 원형 숫자(①②③④) -> 공격용 문자 인코더(converter.dict)에 없어 인코딩 오류 발생
+# 2) 숫자+괄호(1) 2) 3) 4)) -> EasyOCR이 "1)"을 "7)"로 자주 오인식(폰트 모양이 비슷함)
+# 3) 영문자(A) B) C) D)) -> 최종 채택, 오인식 문제 없음을 확인
 
 
 def load_questions():
