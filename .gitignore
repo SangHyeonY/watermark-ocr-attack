@@ -11,10 +11,10 @@ env/
 *.pth
 *.pt
 
-# 생성된 이미지/데이터/결과물
+# 생성된 이미지/데이터/결과물 (각 Step 폴더의 outputs/도 전부 포함)
 pytorch_port/outputs/
 pytorch_port/data/
-pytorch_port/step_b/outputs/
+pytorch_port/step_*/outputs/
 *.pkl
 
 # API 키 등 민감 정보 (.env.example은 placeholder만 있는 템플릿이라 git에 포함됨)

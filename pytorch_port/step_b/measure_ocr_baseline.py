@@ -25,12 +25,14 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from text_metrics import levenshtein_distance, compute_cer  # noqa: E402
 
 QUESTIONS_PATH = os.path.join(os.path.dirname(__file__), "questions.json")
 IMAGE_DIR = os.path.join(os.path.dirname(__file__), "outputs", "question_images")
 RESULT_PATH = os.path.join(os.path.dirname(__file__), "outputs", "ocr_baseline_result.json")
 
-CHOICE_LABELS = ["①", "②", "③", "④"]
+CHOICE_LABELS = ["A)", "B)", "C)", "D)"]
+# render_questions.py와 동일한 라벨 형식으로 맞춤 (WORK_LOG_StepC.md 참고)
 
 
 def load_questions():
@@ -48,32 +50,6 @@ def build_reference_text(question_obj):
         parts.append(choice)
     return "".join(parts)
 
-
-def levenshtein_distance(s1, s2):
-    """두 문자열 간 편집 거리(Levenshtein distance)를 계산한다.
-    CER = levenshtein_distance(인식결과, 정답) / len(정답)."""
-    if len(s1) < len(s2):
-        return levenshtein_distance(s2, s1)
-    if len(s2) == 0:
-        return len(s1)
-
-    previous_row = list(range(len(s2) + 1))
-    for i, c1 in enumerate(s1):
-        current_row = [i + 1]
-        for j, c2 in enumerate(s2):
-            insertions = previous_row[j + 1] + 1
-            deletions = current_row[j] + 1
-            substitutions = previous_row[j] + (c1 != c2)
-            current_row.append(min(insertions, deletions, substitutions))
-        previous_row = current_row
-    return previous_row[-1]
-
-
-def compute_cer(hypothesis, reference):
-    if len(reference) == 0:
-        return 0.0 if len(hypothesis) == 0 else 1.0
-    distance = levenshtein_distance(hypothesis, reference)
-    return distance / len(reference)
 
 
 def main():

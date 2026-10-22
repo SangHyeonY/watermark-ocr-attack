@@ -37,13 +37,16 @@ QUESTIONS_PATH = os.path.join(os.path.dirname(__file__), "questions.json")
 IMAGE_DIR = os.path.join(os.path.dirname(__file__), "outputs", "question_images")
 RESULT_PATH = os.path.join(os.path.dirname(__file__), "outputs", "ai_baseline_result.json")
 
-CHOICE_LABELS = ["①", "②", "③", "④"]
+CHOICE_LABELS = ["A)", "B)", "C)", "D)"]
+# 원래는 원형 숫자(①②③④)였으나, 이후 숫자+괄호(1) 2) 3) 4))로 바꿨더니
+# EasyOCR이 "1)"을 "7)"로 자주 오인식하는 문제가 발견되어(폰트상 모양이 비슷함),
+# 영문자 A)B)C)D)로 최종 변경했다 (WORK_LOG_StepC.md 참고).
 
 PROMPT_TEMPLATE = (
     "이 이미지는 4지선다 객관식 문제입니다. 문제를 읽고 정답을 골라주세요.\n"
-    "반드시 아래 형식으로만 답하세요 (다른 설명 없이 숫자만):\n"
-    "정답: N\n"
-    "(N은 1, 2, 3, 4 중 하나이며, 선택지 순서대로 1번=①, 2번=②, 3번=③, 4번=④입니다)"
+    "반드시 아래 형식으로만 답하세요 (다른 설명 없이 알파벳만):\n"
+    "정답: X\n"
+    "(X는 A, B, C, D 중 하나이며, 선택지 순서대로 1번째=A), 2번째=B), 3번째=C), 4번째=D)입니다)"
 )
 
 
@@ -89,14 +92,19 @@ def ask_model(image_path):
     return data["choices"][0]["message"]["content"]
 
 
+LETTER_TO_NUMBER = {"A": 1, "B": 2, "C": 3, "D": 4}
+
+
 def parse_answer_number(response_text):
-    """AI 응답 텍스트에서 "정답: N" 형식의 숫자를 추출한다. 못 찾으면 None."""
-    match = re.search(r"정답\s*[:：]?\s*([1-4])", response_text)
+    """AI 응답 텍스트에서 "정답: X" 형식의 알파벳(A~D)을 찾아 1~4 숫자로 변환한다.
+    (CHOICE_LABELS가 A)B)C)D)로 바뀌면서, 응답 파싱도 알파벳 기준으로 변경했다.)
+    못 찾으면 None."""
+    match = re.search(r"정답\s*[:：]?\s*([A-Da-d])", response_text)
     if match:
-        return int(match.group(1))
-    # 형식을 안 지켰을 경우, 응답에서 가장 먼저 등장하는 1~4 숫자를 fallback으로 사용
-    fallback = re.search(r"[1-4]", response_text)
-    return int(fallback.group(0)) if fallback else None
+        return LETTER_TO_NUMBER[match.group(1).upper()]
+    # 형식을 안 지켰을 경우, 응답에서 가장 먼저 등장하는 A~D 알파벳을 fallback으로 사용
+    fallback = re.search(r"[A-Da-d]", response_text)
+    return LETTER_TO_NUMBER[fallback.group(0).upper()] if fallback else None
 
 
 def main():
