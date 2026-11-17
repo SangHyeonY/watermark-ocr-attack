@@ -15,6 +15,7 @@ env/
 pytorch_port/outputs/
 pytorch_port/data/
 pytorch_port/step_*/outputs/
+pytorch_port/step_*/outputs_*/
 *.pkl
 
 # API 키 등 민감 정보 (.env.example은 placeholder만 있는 템플릿이라 git에 포함됨)

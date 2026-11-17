@@ -222,17 +222,35 @@ def attack_question_image(wrapper, reader, question_obj, eps, eps_iter, verbose=
     return {"image": final_img, "line_results": line_results}
 
 
-def main():
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    questions = load_questions()
+def run_attack_pipeline(questions, output_dir, reader=None, wrapper=None):
+    """문항 리스트를 받아 eps 3조건 전체에 대해 공격 파이프라인을 실행한다.
 
-    print("[info] EasyOCR Reader 로딩 중 (quantize=False, 공격용 설정)...")
-    reader = easyocr.Reader(["ko", "en"], gpu=False, quantize=False)
-    wrapper = OcrAttackModel(reader)
+    Step B의 20문항뿐 아니라, 다른 문항 세트(예: 토익 샘플 문제)에도 그대로
+    재사용할 수 있도록 main()에서 분리했다. (pytorch_port/step_c/attack_toeic.py
+    에서 이 함수를 재사용함)
+
+    Args:
+        questions: 문항 딕셔너리 리스트 (id, subject, question, choices, answer_index 포함)
+        output_dir: 조건별 결과를 저장할 폴더 (이 아래에 question_images_{low,mid,high}/ 생성됨)
+        reader, wrapper: 미리 만들어둔 EasyOCR Reader/OcrAttackModel을 재사용하고 싶을 때
+            전달. None이면 함수 내부에서 새로 생성한다.
+
+    Returns:
+        dict: {condition_name: condition_log(list)} - 각 조건의 문항별 결과 로그
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    if reader is None:
+        print("[info] EasyOCR Reader 로딩 중 (quantize=False, 공격용 설정)...")
+        reader = easyocr.Reader(["ko", "en"], gpu=False, quantize=False)
+    if wrapper is None:
+        wrapper = OcrAttackModel(reader)
+
+    all_logs = {}
 
     for condition_name, eps in EPS_CONDITIONS.items():
         eps_iter = eps * 0.1
-        condition_dir = os.path.join(OUTPUT_DIR, f"question_images_{condition_name}")
+        condition_dir = os.path.join(output_dir, f"question_images_{condition_name}")
         os.makedirs(condition_dir, exist_ok=True)
 
         print(f"\n{'='*60}")
@@ -286,8 +304,15 @@ def main():
         with open(log_path, "w", encoding="utf-8") as f:
             json.dump(condition_log, f, ensure_ascii=False, indent=2)
         print(f"[조건: {condition_name}] 완료, 로그 저장 -> {log_path}")
+        all_logs[condition_name] = condition_log
 
     print("\n[전체 완료] 모든 eps 조건에 대한 공격된 문제 이미지 생성 완료.")
+    return all_logs
+
+
+def main():
+    questions = load_questions()
+    run_attack_pipeline(questions, OUTPUT_DIR)
 
 
 if __name__ == "__main__":
